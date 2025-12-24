@@ -7,210 +7,157 @@
   <style>
     body {
       margin: 0;
-      background: #000;
+      padding: 0;
+      background-color: #000;
       overflow: hidden;
-      color: #fff;
-      font-family: 'Courier New', Courier, monospace; /* 程序员专用字体 */
-    }
-    canvas {
-      display: block;
-      cursor: move; 
+      font-family: 'Arial', sans-serif;
     }
     
-    /* 悬浮文字样式 */
+    /* 悬浮文字层 */
     .overlay {
       position: absolute;
-      bottom: 20px;
-      width: 100%;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       text-align: center;
       pointer-events: none;
       z-index: 10;
+      mix-blend-mode: overlay; /* 让文字融入背景光效 */
+    }
+
+    h1 {
+      color: #fff;
+      font-size: 3rem;
+      margin: 0;
+      text-shadow: 0 0 20px rgba(255, 255, 255, 0.8), 0 0 40px #00ffcc;
+      letter-spacing: 5px;
+      font-weight: 300;
     }
     
-    .title {
-      font-size: 2.5rem;
-      font-weight: bold;
-      background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
-      -webkit-background-clip: text;
-      color: transparent;
-      animation: rainbow 5s linear infinite;
-      text-shadow: 0 0 10px rgba(255,255,255,0.3);
-    }
-
-    .subtitle {
-      margin-top: 10px;
+    p {
+      color: #00ffcc;
       font-size: 1rem;
-      color: #0f0; /* 黑客绿 */
-      text-shadow: 0 0 5px #0f0;
+      letter-spacing: 3px;
+      margin-top: 10px;
+      text-shadow: 0 0 10px #00ffcc;
     }
 
-    @keyframes rainbow {
-      0% { background-position: 0% 50%; }
-      100% { background-position: 100% 50%; }
-    }
   </style>
 </head>
 <body>
 
-<div class="overlay">
-  <div class="title">Merry Christmas</div>
-  <div class="subtitle">Code by Spring</div>
-</div>
-
-<canvas id="canvas"></canvas>
+  <div class="overlay">
+    <h1>Merry Christmas</h1>
+    <p>Design for You</p>
+  </div>
+  
+  <canvas id="canvas"></canvas>
 
 <script>
-  const canvas = document.querySelector('canvas');
+  const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
 
-  let width, height;
-  let t = 0; // 时间变量
-
+  let w, h;
+  
+  // 适配屏幕
   function resize() {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
   }
   window.addEventListener('resize', resize);
   resize();
 
-  // 3D 投影参数
-  const fov = 350;
-  const viewDistance = 5;
+  // 配置参数
+  const COUNT = 3000; // 粒子数量，越多越密
+  const DEPTH = 800;  // 视距
   
-  // 交互控制
-  let rotationSpeed = 0.02;
-  let angleY = 0;
-  let angleX = 0; // 稍微俯视
+  // 粒子存储
+  const stars = [];
 
-  // 粒子生成器
-  const particles = [];
-  const TOTAL_PARTICLES = 2500; // 极高密度，显卡燃烧！
-
-  for (let i = 0; i < TOTAL_PARTICLES; i++) {
-    // 使用螺旋公式分布粒子
-    // y: 从 -100 到 100 (树高)
-    // r: 半径随高度变化
-    const percent = i / TOTAL_PARTICLES;
-    
-    // 形状控制：圆锥体
-    const y = (percent * 400) - 200; 
-    const radius = (200 - (y + 200) * 0.5) * (0.8 + Math.random()*0.2); 
-    
-    // 黄金角度分布，防止重叠
-    const theta = i * 2.4; 
-
-    particles.push({
-      x: Math.cos(theta) * radius,
-      y: y,
-      z: Math.sin(theta) * radius,
-      baseX: Math.cos(theta) * radius,
-      baseZ: Math.sin(theta) * radius,
-      color: Math.random() > 0.95 ? [255, 215, 0] : [0, 255, 127], // 95% 绿色，5% 金色
-      blinkOffset: Math.random() * 100
+  // 初始化粒子
+  for (let i = 0; i < COUNT; i++) {
+    stars.push({
+      x: 0, y: 0, z: 0,
+      angle: Math.random() * Math.PI * 2, // 初始角度
+      radiusOffset: Math.random() * 50,   // 半径随机偏移，让树看起来不那么死板
+      speed: Math.random() * 0.02 + 0.005, // 旋转速度
+      h: i / COUNT, // 高度百分比 0(顶) -> 1(底)
+      color: Math.random() // 颜色随机因子
     });
   }
 
-  // 鼠标/触摸交互
-  let startX = 0;
-  document.addEventListener('touchstart', e => startX = e.touches[0].clientX);
-  document.addEventListener('touchmove', e => {
-    const delta = e.touches[0].clientX - startX;
-    angleY += delta * 0.005;
-    startX = e.touches[0].clientX;
-  });
-  document.addEventListener('mousemove', e => {
-    // 简单的鼠标跟随旋转
-    angleY = (e.clientX / width - 0.5) * 2;
-  });
+  let rotation = 0; // 整体旋转角度
 
-  function draw() {
-    // 背景：带一点极光蓝的深黑
-    ctx.fillStyle = '#020510'; 
-    ctx.fillRect(0, 0, width, height);
-    
-    // 绘制“极光”光晕背景
-    const gradient = ctx.createRadialGradient(width/2, height/2, 0, width/2, height/2, 600);
-    gradient.addColorStop(0, 'rgba(0, 50, 100, 0.2)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0,0,width,height);
+  function animate() {
+    // 1. 拖尾效果：用半透明黑色覆盖，而不是完全清空
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; 
+    ctx.fillRect(0, 0, w, h);
 
+    // 2. 将坐标原点移到屏幕中心，并向下稍微移动一点，保证树在中间
     ctx.save();
-    ctx.translate(width / 2, height / 2 + 50);
+    ctx.translate(w / 2, h / 2 + 50);
 
-    // 排序粒子，保证3D遮挡关系正确 (画家算法)
-    particles.sort((a, b) => b.pz - a.pz);
+    // 开启发光模式（关键！这能让粒子重叠处变亮，产生光晕感）
+    ctx.globalCompositeOperation = 'lighter';
 
-    t += 0.05; // 时间流动
+    rotation += 0.008; // 自动旋转
 
-    particles.forEach(p => {
-      // 1. 旋转变换
-      let x = p.x;
-      let y = p.y;
-      let z = p.z;
-
-      // 绕Y轴旋转 (自动 + 鼠标)
-      const cosY = Math.cos(angleY + t * rotationSpeed);
-      const sinY = Math.sin(angleY + t * rotationSpeed);
+    stars.forEach(p => {
+      // --- 核心数学修正 ---
+      // 树高范围：从 -300 (上) 到 300 (下)
+      // 在 Canvas 中，负数是上方，正数是下方
+      let logicY = -350 + p.h * 700; 
       
-      let x1 = x * cosY - z * sinY;
-      let z1 = z * cosY + x * sinY;
+      // 树形半径修正：顶部(p=0)半径小，底部(p=1)半径大
+      // 使用 p * p 让树尖更尖，树底更宽
+      let logicR = p.h * p.h * 280 + 10; 
+
+      // 螺旋运动
+      let angle = p.angle + rotation + logicY * 0.005; // 加上 logicY 让螺旋扭曲
       
-      // 2. 呼吸效果 (让树有生命感)
-      // 利用正弦波让粒子在半径方向轻微浮动
-      const breathe = 1 + Math.sin(t * 0.1 + p.y * 0.02) * 0.03;
-      x1 *= breathe;
-      z1 *= breathe;
+      // 算出 3D 坐标
+      let x = Math.cos(angle) * (logicR + p.radiusOffset);
+      let z = Math.sin(angle) * (logicR + p.radiusOffset);
+      let y = logicY;
 
-      // 保存变换后的Z用于排序
-      p.pz = z1;
+      // --- 3D 投影到 2D ---
+      let scale = DEPTH / (DEPTH + z); // 透视公式
+      let x2d = x * scale;
+      let y2d = y * scale;
+      let size = (1.5 + p.h) * scale; // 离得近的大，离得远的小
 
-      // 3. 3D 透视投影
-      const scale = fov / (fov + z1 + 400);
-      const x2d = x1 * scale;
-      const y2d = y * scale;
-
-      // 4. 绘制
       if (scale > 0) {
-        // 闪烁逻辑
-        const blink = Math.sin(t * 0.2 + p.blinkOffset);
-        let alpha = scale * 0.8;
-        if(blink > 0.8) alpha = 1; // 高亮时刻
+        // 颜色计算：根据高度和随机因子生成 蓝-绿-金 渐变
+        // 顶部偏金/白，底部偏绿/蓝
+        let hue = 140 + p.h * 50; // 绿色范围
+        let sat = 100;
+        let light = 50 + (1-p.h)*40; // 顶部更亮
         
-        // 颜色处理
-        const [r, g, b] = p.color;
-        
-        // 如果是金色粒子，画大一点
-        if (r === 255) {
-             ctx.fillStyle = `rgba(255, 255, 200, ${alpha})`;
-             ctx.shadowBlur = 15;
-             ctx.shadowColor = 'orange';
-             ctx.beginPath();
-             ctx.arc(x2d, y2d, 2.5 * scale, 0, Math.PI * 2);
-             ctx.fill();
-             ctx.shadowBlur = 0; // 重置，优化性能
-        } else {
-             // 普通绿色粒子，加一点科技蓝
-             ctx.fillStyle = `rgba(${r}, ${g}, ${b + Math.sin(t)*50}, ${alpha})`;
-             ctx.fillRect(x2d, y2d, 2 * scale, 2 * scale); // 用方形模拟像素感
-        }
+        // 偶尔闪烁的星星
+        if (Math.random() < 0.01) { light = 100; size *= 2; }
+
+        ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
+        ctx.beginPath();
+        ctx.arc(x2d, y2d, size, 0, Math.PI * 2);
+        ctx.fill();
       }
     });
-
-    // 绘制树顶星星
-    ctx.shadowBlur = 40;
-    ctx.shadowColor = "#ffff00";
+    
+    // 绘制顶部的星星 (永远在最上面)
     ctx.fillStyle = "#fff";
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = "#fff";
     ctx.beginPath();
-    ctx.arc(0, -220 * (1 + Math.sin(t * 0.1)*0.03), 6, 0, Math.PI*2);
+    ctx.arc(0, -350 * (DEPTH/(DEPTH-50)), 6, 0, Math.PI*2); // 简单的透视估算
     ctx.fill();
     ctx.shadowBlur = 0;
 
     ctx.restore();
-    requestAnimationFrame(draw);
+    
+    requestAnimationFrame(animate);
   }
 
-  draw();
+  animate();
 </script>
 </body>
 </html>
